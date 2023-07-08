@@ -1,0 +1,186 @@
+---
+title: "Tribal influence on governance of companies"
+author: "John Doe (j.doe.1@research.gla.ac.uk)"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: paper
+    number_sections: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=F}
+# LOAD THE ORIGINAL DATASET
+knitr::opts_chunk$set(echo = F)
+library(tidyverse)
+library(stats)
+library(stargazer)
+companies <- readxl::read_xlsx("data.xlsx", n_max = 129)
+```
+
+# Variable Selection & Transformation
+
+```{r, echo=F}
+# DATA PREPARATION
+companies_df <- companies %>%
+  select(1:9, 29:37) %>%
+  mutate(prop_HF_board = HausaFulani/TotalBoardMembers,
+         prop_I_board = Igbo/TotalBoardMembers,
+         prop_Y_board = Yoruba/TotalBoardMembers,
+         prop_M_board = Minority/TotalBoardMembers,
+         prop_NN_board = NonNative/TotalBoardMembers,
+         homogeneity = pmax(prop_HF_board, prop_I_board, prop_Y_board, prop_M_board, prop_NN_board))
+```
+
+Here we derive a single measure of **homogeneity** as the maximum proportion of board members belonging to any single tribe. The range of this measure is between 0 to 1 and can be expressed in percentages. For example, a homogeneity score of 0.6 for Company A would mean that company A has 60% of its board members belonging to one tribe. The lower the score the more diverse the board of the company is and the higher the score the less diverse the company is.
+
+# Descriptive Statistics
+
+```{r, echo=F}
+# DESCRIPTIVE STATISTICS
+# Average homogeneity
+print(summary(companies_df$homogeneity))
+
+# Create a histogram
+histogram <- ggplot(companies_df, aes(x = homogeneity)) +
+  geom_histogram(fill = "lightblue", color = "black", bins = 30) +
+  labs(x = "Homogeneity", y = "Frequency", title = "Histogram of Homogeneity")
+
+# Create a density plot
+density_plot <- ggplot(companies_df, aes(x = homogeneity)) +
+  geom_density(fill = "lightblue", color = "black") +
+  labs(x = "Homogeneity", y = "Density", title = "Density Plot of Homogeneity")
+
+# Display the plots
+print(histogram)
+print(density_plot)
+```
+
+Here we explore the newly derived variable of interest (homogeneity) by generating summary statistics and visualisations (histogram and density plots).
+
+We can see from the **summary table** that the most diverse company in the data has a maximum of 25% board members from a single tribe and the least diverse company has all its board members (100%) from a single tribe.
+
+The **histogram** reveals that 15 companies have around 40% of board members from a single tribe which is lower than the average homogeneity of 55%. There are 6 companies with 100% board members coming from a single tribe.
+
+The **density plot** and histogram both show that we have a right-skewed distribution which suggests that most companies in the dataset are relatively diverse.
+
+```{r, echo=F}
+# Using the median as a threshold of diversity
+sum(companies_df$homogeneity<0.55)
+sum(companies_df$homogeneity>0.55)
+```
+
+Using **55%** as threshold of diversity, with any company having a score below that as diverse and above as non-diverse --- we can see from the values above that the companies in the dataset are roughly equality split between diverse (63) and non-diverse (66).
+
+```{r, echo=F}
+ggplot(companies_df, aes(x = homogeneity, y = AssetTurnover)) +
+  geom_point() +
+  labs(x = "Diversity of Board Members", y = "Type1 Agency Costs", title = "Correlation Scatter Plot")
+```
+
+The scatter plot indicates weak positive correlation between **AssetTurnover** and **Homogeneity**. We shall establish this formally with a linear model and take into account the confounding variables in our dataset. There is an indication of linearity which suggests that a linear model is suitable for examining the relationship between the two variables.
+
+# Hypothesis Testing (Regression)
+
+**We state our hypothesis as folllows:**
+
+**H0**: The diversity of board members have no association with Type1 agency costs.
+
+**H1**: The highest proportion of board members affiliated to one tribe will be positively associated with Type1 agency costs.
+
+## Model without confounding variables
+
+```{r, echo=F}
+# REGRESSION MODEL (1)
+model1 <- lm(homogeneity ~ AssetTurnover, data = companies_df)
+model_summary <- summary(model1)
+coefficients_table <- model_summary$coefficients
+stargazer(coefficients_table, type = "text")
+```
+
+### Interpretation
+
+The estimated intercept is 0.57499. It represents the expected value of the dependent variable (**`homogeneity`**) when the independent variable (**`AssetTurnover`**) is zero.
+
+The estimated coefficient for **`AssetTurnover`** is 0.01752. It represents the expected change in the dependent variable for a one-unit increase in **`AssetTurnover`**, holding other variables constant. However, since the p-value for this coefficient is not statistically significant (p-value: 0.311), we fail to reject the null hypothesis that there is no association between **`AssetTurnover`** and **`homogeneity`**.
+
+Multiple R-squared (0.008067) represents the proportion of variance in the dependent variable (**`homogeneity`**) explained by the independent variable (**`AssetTurnover`**). In this case, the value is quite low, suggesting that only a small fraction of the variability in **`homogeneity`** can be explained by **`AssetTurnover`**.
+
+The F-statistic (1.033) tests the overall significance of the model. In this case, it has a value of approximately 1.033, with 1 and 127 degrees of freedom. The associated p-value (0.3114) is greater than the commonly used significance level of 0.05. Thus, we fail to reject the null hypothesis of no significant association between the independent variable (**`AssetTurnover`**) and the dependent variable (**`homogeneity`**).
+
+In summary, based on the provided regression output, there is insufficient evidence to conclude that there is a significant association between **`AssetTurnover`** and **`homogeneity`**. The coefficient for **`AssetTurnover`** is not statistically significant, and the low R-squared values indicate that **`AssetTurnover`** on its own explain only a small portion of the variability in **`homogeneity`**.
+
+## 
+
+Model with confounding variables
+
+```{r, echo=F}
+# REGRESSION MODEL (2)
+model2 <- lm(homogeneity ~ Years + AssetTurnover + Employees +  as.factor(Sector) + as.factor(Categorization) + as.factor(GroupNotgroup) , data = companies_df)
+tab_model(model2)
+```
+
+### Interpretation
+
+The estimated intercept is 0.5970. It represents the expected value of the dependent variable (**`homogeneity`**) when all independent variables are zero.
+
+The estimated coefficient for **`Years`** is -0.0007203. It represents the expected change in the dependent variable for a one-unit increase in **`Years`**, holding other variables constant. However, since the p-value for this coefficient is not statistically significant (p-value: 0.36), we fail to reject the null hypothesis that there is no association between **`Years`** and **`homogeneity`**.
+
+The estimated coefficient for **`AssetTurnover`** is 0.02537. It represents the expected change in the dependent variable for a one-unit increase in **`AssetTurnover`**, holding other variables constant. However, since the p-value for this coefficient is not statistically significant (p-value: 0.18), we fail to reject the null hypothesis that there is no association between **`AssetTurnover`** and **`homogeneity`**.
+
+The estimated coefficient for **`Employees`** is 6.270e-06. It represents the expected change in the dependent variable for a one-unit increase in **`Employees`**, holding other variables constant. The p-value (p-value: 0.005) indicates that this coefficient is statistically significant, suggesting a potential association between **`Employees`** and **`homogeneity`**.
+
+For the categorical confounding variables (Sector, Categorization and Business Model) --- none of the categorical variables have statistically significant coefficients, as indicated by their respective p-values. The output includes coefficients for different levels of categorical variables. Each level has its own coefficient compared to the reference level, which is typically represented as **`(variable)1`**. The coefficients for these categorical variables represent the expected change in the dependent variable compared to the reference level, while holding other variables constant. For example, the coefficient for **`(Sector)2`** is 0.05737, indicating the expected change in **`homogeneity`** when comparing level 2 of **`Sector`** to the reference level (level 1).
+
+## Logistic regression model with a binary outcome variable and confounding variables
+
+```{r, echo=F}
+companies_df$diversity <- ifelse(companies_df$homogeneity < 0.55, "Diverse", "Non-diverse")
+
+
+count <- table(companies_df$diversity)
+
+# Convert the count to a data frame
+bar_df <- data.frame(diversity = names(count), count = as.numeric(count))
+
+# Generate the bar chart using ggplot
+ggplot(bar_df, aes(x = diversity, y = count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  xlab("Diversity") +
+  ylab("Count") +
+  ggtitle("Bar Chart of Diversity of board members for 129 companies")
+```
+
+Using a threshold of 0.55 and categorizing an homogeneity score below that as diverse and equal or above 0.55 as non-diverse, we get a roughly equal split between both groups.
+
+```{r, echo=F}
+# REGRESSION MODEL (3)
+companies_df <- companies_df %>%
+  mutate(diversity = fct_recode(as.factor(diversity), `1` = "Diverse", `0` = "Non-diverse"))
+
+model3 <- glm(as.numeric(diversity) ~ Years + AssetTurnover + Employees +  as.factor(Sector) + as.factor(Categorization) + as.factor(GroupNotgroup), data = companies_df)
+tab_model(model3)
+
+
+
+# Customize the table appearance
+summary_table <- summary_table %>%
+  add_significance_stars() %>%
+  modify_header(label = "**Variable**", estimate = "**Estimate**", std.error = "**Std. Error**", p.value = "**P-value**")
+
+# Print the table
+summary_table
+```
+
+### Interpretation
+
+Again, no evidence of an association between **AssetTurnover** and **Diversity, t**aking all counfounding variables into account. However, interestingly in this model, there is a statistically significant association between that **Years** and **AssetTurnover**, holding other variables constant.
+
+# Notes
+
+1.  I have used AssetTurnover as the independent variable, it may be worth standardizing cash flow and using it instead to see if there's any difference.
+
+2.  It may also be worth dropping one or more of the confounding variables to observe any change.

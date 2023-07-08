@@ -1,0 +1,448 @@
+---
+title: "Tribal influence on governance of companies"
+author: "Adeola Olawoyin (adeola.olayowin.1@research.gla.ac.uk)"
+date: "`r Sys.Date()`"
+output:
+  word_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: paper
+    number_sections: no
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=F}
+# LOAD THE ORIGINAL DATASET
+knitr::opts_chunk$set(echo = F)
+library(tidyverse)
+library(stats)
+library(gridExtra)
+companies <- readxl::read_xlsx("data_revised.xlsx", n_max = 129)
+```
+
+```{r, echo=F}
+#--------------------------DATA TRANSFORMATION----------------------------------------------
+# variable selection
+companies_df <- companies %>%
+  select(1:3, 10:13, 27:34, -(35:37),38, -39, -41, 40) %>%
+  mutate(DummyNonPredominant = ifelse(is.na(DummyNonPredominant), 0, DummyNonPredominant)) #there is an NA for company102 which should be 0
+
+
+#creating single variable to indicate which tribe has the highest proportion of board members
+companies_df$dom_tribe_board <- as.factor(ifelse(companies_df$`DummyHausa/Fulani` == 1, "Hausa_Fulani", ifelse(companies_df$DummyIgbo == 1, "Igbo", ifelse(companies_df$DummyYoruba == 1, "Yoruba", ifelse(companies_df$DummyNonPredominant==1, "NonPredominant", NA)))))
+
+
+companies_df <- companies_df %>% filter(!TotalCeos==0) #remove companies with no CEOS
+
+#creating binary variable to indicate whether or not CEO belongs to dominant tribe
+companies_df$ceo_tribe <- ifelse(companies_df$CeoH/companies_df$TotalCeos>0.5, "Hausa_Fulani", (ifelse(companies_df$CeoI/companies_df$TotalCeos>0.5, "Igbo", ifelse(companies_df$CeoY/companies_df$TotalCeos>0.5, "Yoruba", ifelse(companies_df$CeoM/companies_df$TotalCeos==1, "NonPredominant", ifelse(companies_df$CeoNN/companies_df$TotalCeos==1, "NonPredominant", "NonPredominant"))))))
+
+companies_df$ceo_dom <- ifelse(companies_df$dom_tribe_board==companies_df$ceo_tribe, 1,0)
+
+companies_df <- companies_df %>%
+  mutate(ceo_dom = if_else(dom_tribe_board == "NonPredominant" & ceo_tribe == "NonPredominant", 0, ceo_dom))
+
+```
+
+```{r, echo=F}
+companies_df$dom_tribe_board <- factor(companies_df$dom_tribe_board, levels = c("Hausa_Fulani", "Yoruba", "Igbo", "NonPredominant"))
+
+hausa_fulani_v_NP <- c(1,0,0,0)
+yoruba_v_NP <- c(0,1,0,0)
+igbo_v_NP <- c(0,0,1,0)
+
+contrasts(companies_df$dom_tribe_board) <- cbind(hausa_fulani_v_NP, yoruba_v_NP, igbo_v_NP)
+```
+
+```{r, echo=F}
+model1 <- lm(AssetTurnover ~ dom_tribe_board + factor(Sector) + Years + Employees, data = companies_df)
+model2 <- lm(Cash ~ dom_tribe_board + factor(Sector) + Years + Employees, data = companies_df)
+```
+
+# Summary of findings
+
+There is statistically significant evidence that board dominance of a tribe is associated with Type1 agency cost. Aggregating the results from using both **AssetTurnover** and **Cashflow** as proxies for Type1 agency cost, this association is negative and statistically significant for the Yoruba and Igbo tribes. In other words, the presence of a majority tribe on the board is associated with lower Type1 agency costs for the Yorube and Igbo tribes but this association is not statistically significant for the Hausa/Fulani tribe.
+
+When we tested the difference in means of companies whose CEO belonged to the dominant tribe on the board against companies whose CEO is from a different tribe, this difference is not statistically significant, taken our confounding variables into account.
+
+The regression models that tested the influence of the interaction between dominance of a tribe on the board of companies and CEO membership of that tribe on Type1 agency cost explained the most variation (approx. 31% and 40%) in the response variables (AssetTurnover and Cashflow). We were unable to ascertain the direction of this association. For example where the association was negative for the Hausa/Fulani tribe, the direction was positive for the Igbo tribe.
+
+# Points to note (Methodology)
+
+1.  For testing the first hypothesis, we took companies with '**NonPredominant'** as their tribal category as the baseline for which we assessed other categories against (i.e companies where the highest proportion of board members are from the Yoruba, Hausa/Fulani and Igbo tribes). We used the *contrast* base function in R to set our dummy variable for the regression model after combining the original dummy variables into a single variable for conciseness. The model yields the same result as using the original dummy variables, the benefit of combining them into a single variable is to support with the data transformation required to test the second hypothesis and it also helped the interpretability of the model as we had more control over setting the baseline.
+2.  For testing the second hypothesis, we have used CEO_NonPredominant to capture cases where the CEO belongs to a minority tribe, is a non-native and those companies that have more than one CEO and there is no majority. Therefore the ***ceo_dom=1*** variable indicates cases where the CEO is from the dominant tribe on the board (either Yoruba, Hausa/Fulani or Igbo)
+3.  We have removed two companies with no CEOS from our sample of 129. Therefore for testing hypothesis 2 and 3, our sample size is 127.
+4.  For interpreting model results, we have only drawn conclusions that support our hypotheses tests and have not made elaborate comments on the parameter estimates and other statistics included in the table of model result. Please see the appendix for full table of model results.
+
+# Assumptions
+
+We have used multiple linear regression (MLR) to test all our hypothesis, in order to account for the confounding variables we have data for. Some key assumptions of MLR are as follows:
+
+1.  A **linear relationship** between the dependent and independent variables - We verified this with the aid of scatter plots.
+
+2.  **Independence of observations** - This assumption holds true as all companies in our sample are unique.
+
+3.  There is little to no **multicollinearity** - Sector may be slightly correlated with the number of employees
+
+4.  **Homoscedasticity** - We verified this assumption with plots of residuals versus predicted.
+
+# Limitations
+
+1.  The models could be improved by gathering more data about the companies, for example, their location as this may be a significant confounding factor. We can also try including some other confounding variables in the dataset like category and group of companies.
+2.  Cashflow is highly skewed and there are some influential outliers in the data which may distort our model results. This is another thing that can be improved on to get better model results.
+3.  The categories in our data are not equal, which may influence our results. For example we have in our sample, 59 companies with a Yoruba majority board and only 9 companies with an Hausa/Fulani majority board.
+
+# Hypothesis 1
+
+Our aim is to test the following hypothesis:
+
+**H0**: Tribal dominance on the board of companies have no association with Type1 agency costs.
+
+**H1**: The highest proportion of board members affiliated to one tribe will be positively associated with Type1 agency costs.
+
+### Descriptive Statistics
+
+#### Visualizing the relationship between AssetTurnover and tribe-board dominance
+
+```{r, echo = F}
+
+plot1 <- ggplot(companies_df, aes(x = factor(DummyYoruba), y = AssetTurnover, color = factor(DummyYoruba))) +
+  geom_jitter(width = 0.2, height = 0) +
+  labs(x = "Board Dominance (Yoruba)", y = "AssetTurnover") +
+  theme_minimal() + theme(legend.position = "none")
+
+plot2 <- ggplot(companies_df, aes(x = factor(`DummyHausa/Fulani`), y = AssetTurnover, color = factor(`DummyHausa/Fulani`))) +
+  geom_jitter(width = 0.2, height = 0) +
+  labs(x = "Board Dominance (Hausa/Fulani)", y = "AssetTurnover") +
+  theme_minimal() + theme(legend.position = "none")
+
+plot3 <- ggplot(companies_df, aes(x = factor(DummyIgbo), y = AssetTurnover, color = factor(DummyIgbo))) +
+  geom_jitter(width = 0.2, height = 0) +
+  labs(x = "Board Dominance (Igbo)", y = "AssetTurnover") +
+  theme_minimal() + theme(legend.position = "none")
+
+
+plot4 <- ggplot(companies_df, aes(x = factor(DummyNonPredominant), y = AssetTurnover, color = factor(DummyNonPredominant))) +
+  geom_jitter(width = 0.2, height = 0) +
+  labs(x = "Board Dominance (Non-Predominant)", y = "AssetTurnover") +
+  theme_minimal() + theme(legend.position = "none")
+
+grid.arrange(plot1, plot2, plot3, plot4, nrow=2)
+```
+
+The scatterplots above do not indicate a strong association between tribe dominance on the board of companies and **AssetTurnover**. The first graph shows that within the sample, Yoruba tribe has the highest number of boards where it is the dominant tribe. It is also the dominant tribe in the company with the highest **AssetTurnover**. We can see on the second graph that there are only nine (9) companies in our sample with a dominant Hausa/Fulani board, this is likely to have an impact on our model results.
+
+#### Visualizing AssetTurnover and cofounding variables
+
+```{r, echo=F}
+plot5 <- ggplot(companies_df, aes(x = factor(Sector), y = AssetTurnover, color = factor(Sector))) +
+  geom_jitter(width = 0.2, height = 0) +
+  labs(x = "Sector", y = "AssetTurnover") +
+  theme_minimal() + theme(legend.position = "none")
+
+plot6 <- ggplot(companies_df, aes(x = Years, y = AssetTurnover)) +
+  geom_point() +
+  labs(x = "Years", y = "AssetTurnover") +
+  theme_minimal()
+
+
+plot7 <- ggplot(companies_df, aes(x = Employees, y = AssetTurnover)) +
+  geom_point() +
+  labs(x = "Employees", y = "AssetTurnover") +
+  theme_minimal()
+
+grid.arrange(plot5, plot6, plot7, nrow = 2)
+```
+
+**Sector1** appears to have higher **AssetTurnover** compared to sectors 2 and 3. The relationship between **AssetTurnover** and **Years** is linear and positive but weak, similarly with Employees.
+
+[**Note:**]{.underline} There are five (5) companies with missing data for the number of employees.
+
+## Test of hypothesis - Multiple linear regression
+
+### Using AssetTurnover as a proxy
+
+$AssetTurnover = 1.396 + 0.2915*Hausa_Fulani_versus_NonPred + 0.4857 * Yoruba_versus_NonPred + 0.3257*Igbo_versus_NonPred - 0.8815 * Sector2 - 1.250 * Sector3 - 0.0004926*Years - 0.00001076*Employees ϵ$
+
+```{r, echo=F}
+model1 <- lm(AssetTurnover ~ dom_tribe_board + factor(Sector) + Years + Employees, data = companies_df)
+```
+
+#### Table 1
+
+| Variable                        | Coefficient | Std.Error | t-Statistic | Prob. | Significance |
+|:-----------|:----------:|:----------:|:----------:|:----------:|:----------:|
+| **Intercept**                   |    1.396    |   0.283   |    4.928    | 0.000 |      \*      |
+| **Hausa/Fulani** versus NonPred |    0.292    |   0.338   |    0.853    | 0.395 |              |
+| **Yoruba** versus NonPred       |    0.486    |   0.181   |    2.671    | 0.009 |      \*      |
+| **Igbo** versus NonPred         |    0.325    |   0.240   |    1.349    | 0.179 |              |
+| **Sector^2^**                   |   -0.882    |   0.267   |   -3.290    | 0.001 |      \*      |
+| **Sector^3^**                   |   -1.250    |   0.241   |   -5.173    | 0.000 |      \*      |
+| **Years**                       |   -0.0005   |   0.003   |   -0.139    | 0.889 |              |
+| **Employees**                   |  -0.00001   |  0.00001  |   -1.210    | 0.228 |              |
+
+|                        |        |                 |        |
+|------------------------|--------|-----------------|--------|
+| **R-squared**          | 0.2178 | **F-statistic** | 4.573  |
+| **Adjusted R-squared** | 0.1701 | **P-value**     | 0.0002 |
+
+#### Interpretation
+
+Given that there is a statistically significant parameter estimate for companies that have a majority Yoruba compared to companies with no predominant tribe on the board, as seen in the corresponding t-value, we have evidence to reject the null hypothesis. Our conclusion therefore is that there is evidence of an association between tribe majority on the board of a company and type1 agency costs using **AssetTurnover** as a proxy for Type1 agency cost.
+
+#### Goodness of fit
+
+**R-squared**
+
+The model explains 21.8% of the variance observed in AssetTurnover with an adjusted R-squared of 17%.
+
+**F-Statistic**
+
+The F-statistic for our model is **4.57** with a p-value of **0.0002** which indicates that the model provides a better fit to the data than an intercept-only model.
+
+**Residual Analysis**
+
+As shown in the plot below, even though there is no clear trend, we can observe some cluster of points which could be an indication of a lack of fit of the model above.
+
+```{r, echo = F}
+residuals1 <- residuals(model1)
+predicted1 <- predict(model1)
+plot(predicted1, residuals1, xlab = "Predicted Values", ylab = "Residuals", main = "Residuals vs. Predicted values")
+abline(h = 0, col = "red", lwd = 2)
+```
+
+### Using Cashflow as proxy
+
+```{r, echo = F}
+model2 <- lm(formula = Cash ~ dom_tribe_board + factor(Sector) + Years + Employees, data = companies_df)
+```
+
+#### Table 2
+
+| Variable                        | Coefficient | Std.Error | t-Statistic | Prob. | Significance |
+|:-----------|:----------:|:----------:|:----------:|:----------:|:----------:|
+| **Intercept**                   |  -6443993   | 18812861  |   -0.343    | 0.733 |              |
+| **Hausa/Fulani** versus NonPred |  10573765   | 22595739  |    0.468    | 0.641 |              |
+| **Yoruba** versus NonPred       |  -3048804   | 12187760  |   -0.250    | 0.803 |              |
+| **Igbo** versus NonPred         |  35244586   | 15934859  |    2.212    | 0.029 |      \*      |
+| **Sector^2^**                   |  -11680795  | 18280283  |   -0.639    | 0.524 |              |
+| **Sector^3^**                   |   7087093   | 16262585  |    0.436    | 0.664 |              |
+| **Years**                       |   158614    |  251204   |    0.631    | 0.529 |              |
+| **Employees**                   |    10154    |    217    |    4.643    | 0.000 |      \*      |
+
+|                        |        |                 |       |
+|------------------------|--------|-----------------|-------|
+| **R-squared**          | 0.2259 | **F-statistic** | 4.793 |
+| **Adjusted R-squared** | 0.1787 | **P-value**     | 0.000 |
+
+#### Interpretation
+
+Given that there is a statistically significant parameter estimate for companies that have a majority Igbo compared to companies with no predominant tribe on the board, as seen in the corresponding t-value, we have evidence to reject the null hypothesis. Our conclusion therefore is that there is evidence of an association between tribe majority on the board of a company and type1 agency costs using **Cashflow** as a proxy for Type1 agency cost.
+
+#### Goodness of fit
+
+**R-squared**
+
+The model explains 22.59% of the variance observed in Cashflow with an adjusted R-squared of 17.87%.
+
+**F-Statistic**
+
+The F-statistic for our model is **4.79** with a p-value of **0.00009** which indicates that the model provides a better fit to the data than an intercept-only model.
+
+**Residual Analysis**
+
+There is a trend in the plot of residuals shown below which is an indication of lack of fit of the model.
+
+```{r, echo = F}
+residuals2 <- residuals(model2)
+predicted2 <- predict(model2)
+plot(predicted2, residuals2, xlab = "Predicted Values", ylab = "Residuals", main = "Residuals vs. Predicted values")
+abline(h = 0, col = "red", lwd = 2)
+```
+
+# Hypothesis 2
+
+We state our hypothesis as follows:
+
+**H0**: The CEO belonging to the dominant tribe on the board has no association with type1 agency costs.
+
+**H1**: Where the CEO belongs to dominant tribe will be positively associated with type 1 agency costs.
+
+## Descriptive Statistics
+
+```{r, echo=F}
+table(companies_df$ceo_dom)
+```
+
+We have 51 companies in our dataset where the CEO belongs to the dominant tribe on the board. For the rest 76 companies either the tribe of the CEO is not the same as the tribe with majority proportion on the board or it is of the **NonPredominant** class (see methodology for more information on the NonPredominant class).
+
+```{r, echo = F}
+ggplot(companies_df, aes(x = factor(ceo_dom), y = AssetTurnover, color = factor(ceo_dom))) +
+  geom_jitter(width = 0.2, height = 0) +
+  labs(x = "CEO from dominant tribe", y = "AssetTurnover") +
+  theme_minimal() + theme(legend.position = "none")
+```
+
+**Some insights that can be observed in the plot above include:**
+
+1\. There is an outlier company whose CEO is not from the dominant tribe on the board with the highest AssetTurnover ratio (\>8).
+
+2\. Companies with their CEO from the dominant tribe on the board tend to have higher AssetTurnover ratio.
+
+## Test of hypothesis - Multiple linear regression
+
+### Using AssetTurnover as proxy
+
+```{r}
+model3 <- lm(AssetTurnover ~ factor(ceo_dom) + factor(Sector) + Years + Employees, data = companies_df)
+
+```
+
+#### Table 3
+
+| Variable            | Coefficient | Std.Error | t-Statistic | Prob. | Significance |
+|:-----------|:----------:|:----------:|:----------:|:----------:|:----------:|
+| **Intercept**       |    1.532    |   0.280   |    5.468    | 0.000 |      \*      |
+| **CEO_Dominant^1^** |    0.240    |   0.161   |    1.489    | 0.139 |              |
+| **Sector^2^**       |   -0.832    |   0.275   |   -3.024    | 0.003 |      \*      |
+| **Sector^3^**       |   -1.190    |   0.247   |   -4.816    | 0.000 |      \*      |
+| **Years**           |   0.00009   |  0.0038   |    0.024    | 0.981 |              |
+| **Employees**       |  -0.00002   |  0.00003  |   -0.816    | 0.416 |              |
+
+|                        |        |                 |        |
+|------------------------|--------|-----------------|--------|
+| **R-squared**          | 0.1863 | **F-statistic** | 5.357  |
+| **Adjusted R-squared** | 0.1515 | **P-value**     | 0.0001 |
+
+#### Intepretation
+
+Using *AssetTurnover* as proxy for Type1 agency cost, we do not have evidence to reject the null hypothesis given that the difference in the means of companies whose CEOs are from the dominant tribe on the board are not significantly different from companies whose CEOs are from a different tribe to the dominant tribe on the board, as shown in the t-statistic reported in the table above. However the model as a whole is statistically significant at 0.05 level of significance. Our conclusion therefore is that we have no evidence that affiliation of the CEO to the dominant tribe on the board is associated with Type1 agency costs.
+
+### Using Cashflow as proxy
+
+```{r}
+model4 <- lm(Cash ~ factor(ceo_dom) + factor(Sector) + Years + Employees, data = companies_df)
+```
+
+#### Table 4
+
+| Variable            | Coefficient | Std.Error | t-Statistic | Prob. | Significance |
+|:-----------|:----------:|:----------:|:----------:|:----------:|:----------:|
+| **Intercept**       |  -9734083   | 18522509  |   -0.526    | 0.600 |              |
+| **CEO_Dominant^1^** |  12795949   | 10646998  |    1.202    | 0.232 |              |
+| **Sector^2^**       |  -13733805  | 18177473  |   -0.756    | 0.451 |              |
+| **Sector^3^**       |   8196656   | 16325515  |    0.502    | 0.617 |              |
+| **Years**           |   217056    |  249918   |    0.869    | 0.387 |              |
+| **Employees**       |    10570    |   2156    |    4.902    | 0.000 |      \*      |
+
+|                        |        |                 |        |
+|------------------------|--------|-----------------|--------|
+| **R-squared**          | 0.1877 | **F-statistic** | 5.407  |
+| **Adjusted R-squared** | 0.153  | **P-value**     | 0.0001 |
+
+#### Intepretation
+
+Using *Cashflow* as proxy for Type1 agency cost, we do not have evidence to reject the null hypothesis given that the difference in the means of companies whose CEOs are from the dominant tribe on the board are not significantly different from companies whose CEOs are from a different tribe to the dominant tribe on the board, as shown in the t-statistic reported in the table above. However the model as a whole is statistically significant at 0.05 level of significance. Our conclusion therefore is that we have no evidence that affiliation of the CEO to the dominant tribe on the board is associated with Type1 agency costs.
+
+# Hypothesis 3
+
+We state our hypothesis as follows:
+
+**H0**: Interaction between proportion of dominant tribe and CEO membership of that group has no association with Type 1 agency costs.
+
+**H1**: Interaction between proportion of dominant tribe and CEO membership of that group will be positively associated with Type 1 agency costs.
+
+## Test of hypothesis
+
+### Using AssetTurnover as proxy
+
+**Note:** Only the result of the interaction terms have been presented in this table. If you wish to see the full table, please refer the appendix.
+
+```{r, echo = F}
+model5 <- lm(AssetTurnover ~ `DummyHausa/Fulani`*CeoH + DummyIgbo*CeoI + DummyYoruba*CeoY + factor(Sector) + Years + Employees, data = companies_df )
+```
+
+##### Table 5
+
+| Variable                   | Coefficient | Std.Error | t-Statistic | Prob. | Significance |
+|:-----------|:----------:|:----------:|:----------:|:----------:|:----------:|
+| **Intercept**              |    1.58     |   0.30    |    5.41     | 0.00  |     *\**     |
+| **DummyHausa/Fulani:CeoH** |    -1.24    |   0.53    |    -2.35    | 0.02  |      \*      |
+| **DummyIgbo:CeoI**         |    0.85     |   0.43    |    1.95     | 0.05  |      \*      |
+| **DummyYoruba:CeoY**       |    0.12     |   0.35    |    0.335    | 0.74  |              |
+
+|                        |      |                 |         |
+|------------------------|------|-----------------|---------|
+| **R-squared**          | 0.31 | **F-statistic** | 3.779   |
+| **Adjusted R-squared** | 0.23 | **P-value**     | 0.00005 |
+
+#### Intepretation
+
+As seen in the table above, two of our interaction terms are statistically significant at 0.05 confidence level. Therefore we have evidence to reject the null hypothesis. However, their coefficients are in opposite direction which means that although we can say that the association between Type1 agency cost and tribe dominance on the board of the company depends on whether or not the CEO is of the same tribe, we cannot ascertain based on the evidence at hand whether the association is positive or negative. For example, board dominance is negatively associated with **AssetTurnover** for Hausa/Fulani tribe depending on whether or not the CEO is of the same tribe while the direction is opposite for the Igbo tribe.
+
+### Using Cashflow as proxy
+
+**Note:** Only the result of the interaction terms have been presented in this table. If you wish to see the full table, please refer the appendix.
+
+```{r, echo = F}
+model6 <- lm(Cash ~ `DummyHausa/Fulani`*CeoH + DummyIgbo*CeoI + DummyYoruba*CeoY + factor(Sector) + Years + Employees, data = companies_df )
+```
+
+#### Table 6
+
+| Variable                   | Coefficient | Std.Error | t-Statistic | Prob. | Significance |
+|:-----------|:----------:|:----------:|:----------:|:----------:|:----------:|
+| **Intercept**              |   -711311   | 18189546  |    -0.39    | 0.969 |              |
+| **DummyHausa/Fulani:CeoH** |  11455595   | 32972155  |    0.347    | 0.729 |              |
+| **DummyIgbo:CeoI**         |  69845369   | 27012128  |    2.586    | 0.011 |      \*      |
+| **DummyYoruba:CeoY**       |  30253467   | 21845662  |    1.385    | 0.169 |              |
+
+|                        |      |                 |       |
+|------------------------|------|-----------------|-------|
+| **R-squared**          | 0.39 | **F-statistic** | 5.385 |
+| **Adjusted R-squared** | 0.32 | **P-value**     | 0.000 |
+
+#### Intepretation
+
+As seen in the table above, one of our interaction terms is statistically significant at 0.05 confidence level. Therefore we have evidence to reject the null hypothesis but our conclusion is restricted to knowing that the association between Type1 agency cost and the dominance of a tribe on the board of a company depends on whether or not the CEO is of the same tribe. However we do not have sufficient evidence to ascertain the direction of this relationship given that the interaction is not significant for the two other tribes when we use **Cashflow** as a proxy for Type1 agency costs.
+
+# Appendix
+
+## Table 1 - full results
+
+```{r}
+summary(model1)
+```
+
+## Table 2 - full results
+
+```{r}
+summary(model2)
+```
+
+## Table 3 - full results
+
+```{r}
+summary(model3)
+```
+
+## Table 4 - full results
+
+```{r}
+summary(model4)
+```
+
+## Table 5 - full results
+
+```{r}
+summary(model5)
+```
+
+## Table 6 - full results
+
+```{r}
+summary(model6)
+```
